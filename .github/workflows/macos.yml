@@ -34,7 +34,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["24"]
         include:
           # - architecture: "arm64"
           #   description: "macOS 15 (arm64)"
@@ -50,18 +49,11 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Setup node ${{ matrix.node }}
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node }}
-          package-manager-cache: false
-          registry-url: https://registry.npmjs.org/
+      - name: Setup bun
+        uses: ./.github/workflows/actions/bun
 
       - name: Setup electron
         uses: ./.github/workflows/actions/electron
-
-      - name: Setup pnpm
-        uses: ./.github/workflows/actions/pnpm
 
       - name: Prepare
         shell: bash
@@ -85,12 +77,12 @@ jobs:
 
           EOF
 
-          node update-version.mjs "${{ inputs.version }}"
+          bun update-version.mjs "${{ inputs.version }}"
 
       - name: Build
         shell: bash
         run: |
-          pnpm run build
+          bun run build
 
       - name: Upload
         if: ${{ inputs.publish }}
