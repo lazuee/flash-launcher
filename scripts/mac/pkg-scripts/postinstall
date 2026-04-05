@@ -31,11 +31,20 @@ find_notifier_app() {
     return 1
 }
 
+get_application_bundle_id() {
+    local plist_path="$APP_PATH/Contents/Info.plist"
+
+    if [[ -f "$plist_path" ]]; then
+        /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist_path" 2>/dev/null || true
+    fi
+}
+
 show_install_notification() {
     local uid="$1"
-    local notifier_app
+    local notifier_app activate_bundle_id
 
     notifier_app="$(find_notifier_app || true)"
+    activate_bundle_id="$(get_application_bundle_id || true)"
 
     if [[ -z "$notifier_app" ]]; then
         log "WARN: Notifier app not found"
@@ -43,10 +52,13 @@ show_install_notification() {
     fi
 
     local args=(
-        --title "Installation complete"
-        --content "Ready in /Applications."
-        --reveal "$APP_PATH"
+        --title "${PRODUCT_NAME}"
+        --content "Installation complete"
     )
+
+    if [[ -n "$activate_bundle_id" ]]; then
+        args+=(--activate "$activate_bundle_id")
+    fi
 
     if launchctl asuser "$uid" /usr/bin/open -g -a "$notifier_app" --args "${args[@]}"; then
         log "Displayed installation notification via notifier app"

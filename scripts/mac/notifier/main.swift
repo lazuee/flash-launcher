@@ -5,6 +5,7 @@ struct NotificationOptions {
     var title = "Installation complete"
     var content = "Ready in /Applications."
     var revealPath: String?
+    var activateBundleId: String?
     var duration: TimeInterval = 4.5
 }
 
@@ -33,6 +34,9 @@ func parseOptions() -> NotificationOptions {
         case "-reveal", "--reveal", "--reveal-path":
             options.revealPath = value
             index += 1
+        case "-activate", "--activate", "--activate-bundle-id":
+            options.activateBundleId = value
+            index += 1
         case "-duration", "--duration":
             options.duration = TimeInterval(value) ?? options.duration
             index += 1
@@ -48,13 +52,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let title: String
     private let content: String
     private let revealPath: String?
+    private let activateBundleId: String?
     private let duration: TimeInterval
     private var notificationManager: NotificationManager?
 
-    init(title: String, content: String, revealPath: String?, duration: TimeInterval) {
+    init(title: String, content: String, revealPath: String?, activateBundleId: String?, duration: TimeInterval) {
         self.title = title
         self.content = content
         self.revealPath = revealPath
+        self.activateBundleId = activateBundleId
         self.duration = duration
         super.init()
     }
@@ -64,6 +70,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             title: title,
             content: content,
             revealPath: revealPath,
+            activateBundleId: activateBundleId,
             duration: duration
         )
 
@@ -83,14 +90,16 @@ final class NotificationManager: NSObject, NSUserNotificationCenterDelegate {
     private let title: String
     private let content: String
     private let revealPath: String?
+    private let activateBundleId: String?
     private let duration: TimeInterval
     private var completionHandler: (() -> Void)?
     private var didFinish = false
 
-    init(title: String, content: String, revealPath: String?, duration: TimeInterval) {
+    init(title: String, content: String, revealPath: String?, activateBundleId: String?, duration: TimeInterval) {
         self.title = title
         self.content = content
         self.revealPath = revealPath
+        self.activateBundleId = activateBundleId
         self.duration = duration
         super.init()
     }
@@ -104,13 +113,22 @@ final class NotificationManager: NSObject, NSUserNotificationCenterDelegate {
         notification.title = title
         notification.informativeText = content
         notification.soundName = nil
-        notification.hasActionButton = true
-        notification.actionButtonTitle = "Show"
-        notification.otherButtonTitle = "Close"
+        switch (revealPath, activateBundleId) {
+        case (.some(_), .some(_)):
+            notification.hasActionButton = true
+            notification.actionButtonTitle = "Reveal and Open"
+        case (.some(_), nil):
+            notification.hasActionButton = true
+            notification.actionButtonTitle = "Reveal in Finder"
+        case (nil, .some(_)):
+            notification.hasActionButton = true
+            notification.actionButtonTitle = "Open"
+        case (nil, nil):
+            break
+        }
 
         center.deliver(notification)
-
-        if revealPath == nil {
+        if revealPath == nil && activateBundleId == nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + max(duration, 0.5)) { [weak self] in
                 self?.finish()
             }
@@ -131,6 +149,14 @@ final class NotificationManager: NSObject, NSUserNotificationCenterDelegate {
         if let revealPath {
             let expandedPath = (revealPath as NSString).expandingTildeInPath
             NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: expandedPath)])
+        }
+        if let activateBundleId {
+            NSWorkspace.shared.launchApplication(
+                withBundleIdentifier: activateBundleId,
+                options: [],
+                additionalEventParamDescriptor: nil,
+                launchIdentifier: nil
+            )
         }
 
         finish()
@@ -156,6 +182,7 @@ struct MacOSNotifier {
             title: options.title,
             content: options.content,
             revealPath: options.revealPath,
+            activateBundleId: options.activateBundleId,
             duration: options.duration
         )
         app.delegate = delegate

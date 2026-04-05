@@ -102,7 +102,7 @@ async function prepareMacNotifier() {
       outputDir,
     ],
     {
-      stdio: "inherit",
+      stdio: "pipe",
       env: process.env,
     },
   );
