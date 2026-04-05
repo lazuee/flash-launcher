@@ -1,0 +1,140 @@
+name: Nightly Builds
+run-name: |
+  ${{ github.event_name == 'schedule' && 'Scheduled nightly build' || '' }}
+  ${{ github.event_name == 'workflow_dispatch' && 'Triggered nightly build' || '' }}
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      forceRun:
+        type: boolean
+        description: Force build and publish nightly packages to GitHub
+        default: false
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  check:
+    name: Check latest commit
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check_latest_commit.outputs.code_changes_since_yesterday || steps.version.outputs.nightly_version_exists }}
+      next_version: ${{ steps.version.outputs.next_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        id: checkout
+
+      - name: Check if latest commit is less than 1 day old
+        id: check_latest_commit
+        continue-on-error: true
+        run: |
+          if [[ -n "$(git rev-list --after="24 hours" ${{ steps.checkout.outputs.commit }})" ]]; then
+            echo "code_changes_since_yesterday=true" >> $GITHUB_OUTPUT
+          else
+            echo "code_changes_since_yesterday=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for changes
+        if: ${{ needs.check.outputs.should_run == 'true' || inputs.forceRun }}
+        id: version
+        run: |
+          DATE=$(date '+%Y%m%d')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          NEXT_VERSION=0.0.0-nightly-${SHORT_SHA}-${DATE}
+          echo "next_version=${NEXT_VERSION}" >> $GITHUB_OUTPUT
+
+          if gh release view "v${NEXT_VERSION}" > /dev/null 2>&1; then
+            echo "Latest nightly pre-release is the same as the current commit"
+            echo "nightly_version_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "nightly_version_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  # linux:
+  #   name: Linux
+  #   if: ${{ needs.check.outputs.should_run == 'true' || inputs.forceRun }}
+  #   needs: [check]
+  #   uses: ./.github/workflows/linux.yml
+  #   secrets: inherit
+  #   with:
+  #     publish: true
+  #     nightly: true
+  #     version: ${{ needs.check.outputs.next_version }}
+
+  macos:
+    name: MacOS
+    if: ${{ needs.check.outputs.should_run == 'true' || inputs.forceRun }}
+    needs: [check]
+    uses: ./.github/workflows/macos.yml
+    secrets: inherit
+    with:
+      publish: true
+      nightly: true
+      version: ${{ needs.check.outputs.next_version }}
+
+  windows:
+    name: Windows
+    if: ${{ needs.check.outputs.should_run == 'true' || inputs.forceRun }}
+    needs: [check]
+    uses: ./.github/workflows/windows.yml
+    secrets: inherit
+    with:
+      publish: true
+      nightly: true
+      version: ${{ needs.check.outputs.next_version }}
+
+  nightly:
+    name: Publish to GitHub
+    if: ${{ needs.check.outputs.should_run == 'true' || inputs.forceRun }}
+    needs: [check, macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: artifact-*
+          merge-multiple: true
+
+      - name: Read nightly template
+        uses: markpatterson27/markdown-to-output@v1
+        id: nightly_template
+        with:
+          filepath: ./.github/nightly.md
+
+      - name: Upload Nightly builds
+        uses: andelf/nightly-release@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: nightly
+          name: "v${{ needs.check.outputs.next_version }}"
+          prerelease: true
+          body: ${{ steps.nightly_template.outputs.body }}
+          files: |
+            *.deb
+            *.AppImage
+            *.tar.gz
+            *.exe
+            *.zip
+            *.dmg
+            *.dmg.blockmap
+            *.pkg
+
+      - name: Cleanup Artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: artifact-*
+          failOnError: false

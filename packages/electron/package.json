@@ -1,0 +1,15 @@
+{
+  "name": "electron",
+  "type": "commonjs",
+  "version": "11.5.0",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "bin": "scripts/cli.js",
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "dependencies": {
+    "@electron/get": "^4.0.2",
+    "extract-zip": "^2.0.1"
+  }
+}

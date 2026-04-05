@@ -1,0 +1,52 @@
+name: "pnpm install"
+description: "Run pnpm install with cache enabled"
+runs:
+  using: "composite"
+  steps:
+    - name: Set up swap space
+      if: runner.os == 'Linux'
+      uses: pierotofy/set-swap-space@master
+      with:
+        swap-size-gb: 10
+
+    - name: Expose electron config(s) through "$GITHUB_OUTPUT"
+      id: electron-config
+      shell: bash
+      run: |
+        STORE_PATH=$(pwd)/packages/electron
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          echo "STORE_PATH=$(cygpath -m "$STORE_PATH")" >> $GITHUB_OUTPUT
+        else
+          echo "STORE_PATH=$STORE_PATH" >> $GITHUB_OUTPUT
+        fi
+
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          echo "BUILDER_STORE_PATH=$LOCALAPPDATA\\electron-builder\\cache" >> $GITHUB_OUTPUT
+        elif [[ "${{ runner.os }}" == "macOS" ]]; then
+          echo "BUILDER_STORE_PATH=$HOME/Library/Caches/electron-builder" >> $GITHUB_OUTPUT
+        else
+          echo "BUILDER_STORE_PATH=$HOME/.cache/electron-builder" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Cache rotation keys
+      id: cache-rotation
+      shell: bash
+      run: |
+        echo "The path is ${{ steps.electron-config.outputs.STORE_PATH }}"
+        echo "YEAR_MONTH=$(/bin/date -u "+%Y%m")" >> $GITHUB_OUTPUT
+
+    - uses: actions/cache@v5
+      name: Setup electron cache
+      with:
+        path: ${{ steps.electron-config.outputs.STORE_PATH }}
+        key: ${{ runner.os }}-electron-store-cache-${{ steps.cache-rotation.outputs.YEAR_MONTH }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-electron-store-cache-${{ steps.cache-rotation.outputs.YEAR_MONTH }}-
+
+    - uses: actions/cache@v5
+      name: Setup electron-builder cache
+      with:
+        path: ${{ steps.electron-config.outputs.BUILDER_STORE_PATH }}
+        key: ${{ runner.os }}-electron-builder-store-cache-${{ steps.cache-rotation.outputs.YEAR_MONTH }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-electron-builder-store-cache-${{ steps.cache-rotation.outputs.YEAR_MONTH }}-

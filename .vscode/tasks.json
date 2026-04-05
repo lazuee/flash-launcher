@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "server:build",
+      "type": "shell",
+      "command": "mvn",
+      "args": [
+        "-f",
+        "${workspaceFolder}/apps/server/pom.xml",
+        "clean",
+        "package"
+      ],
+      "problemMatcher": ["$javac"],
+      "group": "build"
+    }
+  ]
+}

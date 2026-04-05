@@ -1,0 +1,106 @@
+name: Windows Builds
+
+on:
+  workflow_call:
+    inputs:
+      event_name:
+        type: string
+        description: The event name
+        default: ""
+        required: false
+      version:
+        type: string
+        description: The release version
+        default: ""
+        required: true
+      nightly:
+        type: boolean
+        description: Nightly build
+        default: false
+        required: false
+      publish:
+        type: boolean
+        description: Package publishing
+        default: false
+        required: false
+
+env:
+  CI: true
+
+jobs:
+  windows:
+    name: ${{ matrix.description }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["24"]
+        include:
+          # - architecture: "arm64"
+          #   description: "Windows 11 (arm64)"
+          #   runner: "windows-11-arm"
+          - architecture: "x64"
+            description: "Windows 11 (x64)"
+            runner: "windows-2025"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup node ${{ matrix.node }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org/
+
+      - name: Setup electron
+        uses: ./.github/workflows/actions/electron
+
+      - name: Setup pnpm
+        uses: ./.github/workflows/actions/pnpm
+
+      - name: Prepare
+        shell: bash
+        run: |
+          cat > update-version.mjs << 'EOF'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { fileURLToPath } from 'node:url';
+
+          const __dirname = fileURLToPath(new URL('.', import.meta.url));
+          const version = process.argv[2];
+          if (!version) {
+            throw new Error('Version argument is required');
+          }
+
+          const pkgPath = join(process.cwd(), 'package.json');
+          const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+          pkg.version = version;
+          writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+          console.log(`Updated ${pkg.name} to version ${version}`);
+
+          EOF
+
+          node update-version.mjs "${{ inputs.version }}"
+
+      - name: Build
+        shell: bash
+        run: |
+          pnpm run build
+
+      - name: Upload
+        if: ${{ inputs.publish }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ format('artifact-{0}', env.NAME) }}
+          path: |
+            ./dist/electron/*
+            !./dist/electron/*.yml
+          if-no-files-found: ignore
+          retention-days: 1
+        env:
+          NAME: ${{ format('windows_{0}', matrix.architecture) }}

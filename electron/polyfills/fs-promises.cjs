@@ -1,0 +1,32 @@
+const { promises } = require("node:fs");
+
+module.exports = promises;
+
+module.exports.access = promises.access;
+module.exports.copyFile = promises.copyFile;
+module.exports.cp = promises.cp;
+module.exports.open = promises.open;
+module.exports.opendir = promises.opendir;
+module.exports.rename = promises.rename;
+module.exports.truncate = promises.truncate;
+module.exports.rm = promises.rm;
+module.exports.rmdir = promises.rmdir;
+module.exports.mkdir = promises.mkdir;
+module.exports.readdir = promises.readdir;
+module.exports.readlink = promises.readlink;
+module.exports.symlink = promises.symlink;
+module.exports.lstat = promises.lstat;
+module.exports.stat = promises.stat;
+module.exports.link = promises.link;
+module.exports.unlink = promises.unlink;
+module.exports.chmod = promises.chmod;
+module.exports.lchmod = promises.lchmod;
+module.exports.lchown = promises.lchown;
+module.exports.chown = promises.chown;
+module.exports.utimes = promises.utimes;
+module.exports.realpath = promises.realpath;
+module.exports.mkdtemp = promises.mkdtemp;
+module.exports.writeFile = promises.writeFile;
+module.exports.appendFile = promises.appendFile;
+module.exports.readFile = promises.readFile;
+module.exports.watch = promises.watch;

@@ -1,0 +1,28 @@
+#!/bin/bash
+# PKG Pre-installation Script
+
+set -e
+
+PRODUCT_NAME="__PRODUCT_NAME__"
+LOG_BASENAME="${PRODUCT_NAME// /}"
+LOG_FILE="/tmp/${LOG_BASENAME}-preinstall.log"
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [PREINSTALL] $1" | tee -a "$LOG_FILE"
+}
+
+log "Starting ${PRODUCT_NAME} pre-installation..."
+
+# Check if application is currently running
+if pgrep -f "$PRODUCT_NAME" > /dev/null; then
+    log "${PRODUCT_NAME} is currently running, attempting to quit..."
+    osascript -e "tell application \"$PRODUCT_NAME\" to quit" 2>/dev/null || true
+    sleep 2
+    if pgrep -f "$PRODUCT_NAME" > /dev/null; then
+        pkill -f "$PRODUCT_NAME" || true
+    fi
+    log "${PRODUCT_NAME} has been stopped"
+fi
+
+log "Pre-installation completed successfully"
+exit 0
