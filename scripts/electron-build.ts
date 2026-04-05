@@ -4,7 +4,7 @@ import {
   build as electronBuild,
   log,
 } from "electron-builder";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -23,11 +23,21 @@ const productName = pkg.name
   .join(" ");
 const artifactName = `${pkg.name}-v${pkg.version}-\${os}-\${arch}.\${ext}`;
 const PKG_PRODUCT_NAME_PLACEHOLDER = "__PRODUCT_NAME__";
+const PKG_INSTALL_PATH_PLACEHOLDER = "__PRODUCT_INSTALL_PATH__";
+const PKG_INSTALL_PATH = "/Applications";
 const PKG_SCRIPTS_SOURCE_DIR = "scripts/mac/pkg-scripts";
+const MAC_NOTIFIER_SOURCE_DIR = "scripts/mac/notifier";
 const BUILD_RESOURCES_DIR = "build";
 const PKG_SCRIPTS_DIR_IN_BUILD_RESOURCES = "pkg-scripts";
 const PKG_SCRIPTS_GENERATED_DIR = `${BUILD_RESOURCES_DIR}/${PKG_SCRIPTS_DIR_IN_BUILD_RESOURCES}`;
 const PKG_SCRIPT_FILES = ["preinstall", "postinstall"] as const;
+const MAC_NOTIFIER_BUILD_DIR = path.join(BUILD_RESOURCES_DIR, "notifier");
+const MAC_NOTIFIER_APP_NAME = `${productName} Notifier`;
+const MAC_NOTIFIER_BUNDLE_ID = `${appId}.notifier`;
+const MAC_NOTIFIER_ICON = path.resolve(
+  process.cwd(),
+  "assets/icons/mac/icon.png",
+);
 
 const PLATFORM_MAP = { win32: "win", darwin: "mac", linux: "linux" } as const;
 const IGNORED_FILES = [
@@ -55,13 +65,51 @@ async function preparePkgScripts(productName: string) {
       const template = await fs.readFile(sourcePath, "utf-8");
       const content = template
         .split(PKG_PRODUCT_NAME_PLACEHOLDER)
-        .join(productName);
+        .join(productName)
+        .split(PKG_INSTALL_PATH_PLACEHOLDER)
+        .join(PKG_INSTALL_PATH);
 
       await fs.writeFile(targetPath, content, { mode: 0o755 });
       await fs.chmod(targetPath, 0o755);
     }),
   );
+}
 
+async function prepareMacNotifier() {
+  if (process.platform !== "darwin") {
+    return;
+  }
+
+  const scriptPath = path.resolve(process.cwd(), MAC_NOTIFIER_SOURCE_DIR, "build.sh");
+  const outputDir = path.resolve(process.cwd(), MAC_NOTIFIER_BUILD_DIR);
+
+  await fs.rm(outputDir, { recursive: true, force: true });
+
+  log.info("Building mac notifier helper...");
+  const result = spawnSync(
+    "/bin/bash",
+    [
+      scriptPath,
+      "--name",
+      MAC_NOTIFIER_APP_NAME,
+      "--bundle-id",
+      MAC_NOTIFIER_BUNDLE_ID,
+      "--version",
+      pkg.version,
+      "--icon",
+      MAC_NOTIFIER_ICON,
+      "--output",
+      outputDir,
+    ],
+    {
+      stdio: "inherit",
+      env: process.env,
+    },
+  );
+
+  if (result.status !== 0) {
+    throw new Error("Failed to build the mac notifier helper");
+  }
 }
 
 async function cleanupPackage({ appOutDir, packager }: AfterPackContext) {
@@ -196,6 +244,7 @@ export function buildElectron(electronOutDir: string): OnAfterBuild {
     async handler() {
       log.info("Building electron app...");
       await preparePkgScripts(productName);
+      await prepareMacNotifier();
 
       await electronBuild({
         config: {
@@ -256,6 +305,10 @@ export function buildElectron(electronOutDir: string): OnAfterBuild {
             notarize: false,
             extraFiles: [
               {
+                from: "build/notifier/Flash Launcher Notifier.app",
+                to: "Frameworks/Flash Launcher Notifier.app",
+              },
+              {
                 from: "assets",
                 to: "Resources/app/assets",
                 filter: createAssetFilter([
@@ -313,7 +366,7 @@ export function buildElectron(electronOutDir: string): OnAfterBuild {
             allowAnywhere: false,
             allowCurrentUserHome: false,
             allowRootDirectory: true,
-            installLocation: "/Applications",
+            installLocation: PKG_INSTALL_PATH,
             license: "../LICENSE.md",
             background: {
               file: "scripts/mac/pkg-background.png",

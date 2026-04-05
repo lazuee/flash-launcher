@@ -4,13 +4,57 @@
 set -e
 
 PRODUCT_NAME="__PRODUCT_NAME__"
-INSTALL_PATH="/Applications"
+INSTALL_PATH="__PRODUCT_INSTALL_PATH__"
 APP_PATH="$INSTALL_PATH/$PRODUCT_NAME.app"
+NOTIFIER_NAME="$PRODUCT_NAME Notifier"
 LOG_BASENAME="${PRODUCT_NAME// /}"
 LOG_FILE="/tmp/${LOG_BASENAME}-postinstall.log"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [POSTINSTALL] $1" | tee -a "$LOG_FILE"
+}
+
+find_notifier_app() {
+    local candidates=(
+        "$APP_PATH/Contents/Frameworks/${NOTIFIER_NAME}.app"
+        "$APP_PATH/Contents/Resources/app/notifier/${NOTIFIER_NAME}.app"
+    )
+    local candidate
+
+    for candidate in "${candidates[@]}"; do
+        if [[ -d "$candidate" && -x "$candidate/Contents/MacOS/${NOTIFIER_NAME}" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+show_install_notification() {
+    local uid="$1"
+    local notifier_app
+
+    notifier_app="$(find_notifier_app || true)"
+
+    if [[ -z "$notifier_app" ]]; then
+        log "WARN: Notifier app not found"
+        return 1
+    fi
+
+    local args=(
+        --title "Installation complete"
+        --content "Ready in /Applications."
+        --reveal "$APP_PATH"
+    )
+
+    if launchctl asuser "$uid" /usr/bin/open -g -a "$notifier_app" --args "${args[@]}"; then
+        log "Displayed installation notification via notifier app"
+        return 0
+    fi
+
+    log "WARN: Notifier app failed to launch"
+    return 1
 }
 
 log "Starting ${PRODUCT_NAME} post-installation..."
@@ -71,7 +115,7 @@ log "Post-installation completed successfully"
 CURRENT_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
 if [[ -n "$CURRENT_USER" && "$CURRENT_USER" != "root" ]]; then
     CURRENT_UID="$(id -u "$CURRENT_USER")"
-    if launchctl asuser "$CURRENT_UID" /usr/bin/osascript -e "display notification \"$PRODUCT_NAME has been installed successfully\" with title \"Installation Complete\""; then
+    if show_install_notification "$CURRENT_UID"; then
         log "Displayed installation notification for ${CURRENT_USER}"
     else
         log "WARN: Failed to display installation notification for ${CURRENT_USER}"
